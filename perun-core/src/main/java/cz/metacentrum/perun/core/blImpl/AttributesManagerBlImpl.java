@@ -911,6 +911,15 @@ public class AttributesManagerBlImpl implements AttributesManagerBl {
 		return getAttributesManagerImpl().getAttribute(sess, user, attributeName);
 	}
 
+	//temporarily added for testing purposes
+	public void removeAttributeFromCache(User user, AttributeDefinition attribute) {
+		getAttributesManagerImpl().removeAttributeFromCache(user, attribute);
+	}
+
+	//temporarily added for testing purposes
+	public void removeAllUserFacilityAttributesFromCache(User user) {
+		getAttributesManagerImpl().removeAllUserFacilityAttributesFromCache(user);
+	}
 
 	public Attribute getAttribute(PerunSession sess, Host host, String attributeName) throws InternalErrorException, WrongAttributeAssignmentException, AttributeNotExistsException {
 		if(!attributeName.startsWith(AttributesManager.NS_HOST_ATTR)) throw new WrongAttributeAssignmentException("Attribute name= " + attributeName);

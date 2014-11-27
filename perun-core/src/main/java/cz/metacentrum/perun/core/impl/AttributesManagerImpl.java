@@ -1305,6 +1305,16 @@ public class AttributesManagerImpl implements AttributesManagerImplApi {
 		}
 	}
 
+	//temporarily added for testing purposes
+	public void removeAttributeFromCache(User user, AttributeDefinition attribute) {
+		AttributeHolders attr = new AttributeHolders(user, null);
+		cacheManager.removeAttributeFromCache(attr, attribute);
+	}
+
+	//temporarily added for testing purposes
+	public void removeAllUserFacilityAttributesFromCache(User user) {
+		cacheManager.removeAllUserFacilityAttributesFromCache(user);
+	}
 
 	public Attribute getAttribute(PerunSession sess, Host host, String attributeName) throws InternalErrorException, AttributeNotExistsException {
 		Attribute attribute = cacheManager.getAttributeFromCacheInTransaction(host, attributeName);

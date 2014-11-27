@@ -475,6 +475,10 @@ public interface AttributesManagerImplApi {
 	 */
 	Attribute getAttribute(PerunSession sess, User user, String attributeName) throws InternalErrorException, AttributeNotExistsException;
 
+	void removeAttributeFromCache(User user, AttributeDefinition attribute);
+
+	void removeAllUserFacilityAttributesFromCache(User user);
+
 	Attribute getAttribute(PerunSession sess, Host host, String attributeName) throws InternalErrorException, AttributeNotExistsException;
 
 	Attribute getAttribute(PerunSession sess, Resource resource, Group group, String attributeName) throws InternalErrorException, AttributeNotExistsException;

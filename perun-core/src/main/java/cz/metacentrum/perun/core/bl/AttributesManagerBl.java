@@ -778,6 +778,10 @@ public interface AttributesManagerBl {
 	 */
 	Attribute getAttribute(PerunSession sess, User user, String attributeName) throws InternalErrorException, WrongAttributeAssignmentException, AttributeNotExistsException;
 
+	void removeAttributeFromCache(User user, AttributeDefinition attribute);
+
+	void removeAllUserFacilityAttributesFromCache(User user);
+
 	/**
 	 * Get particular attribute for the host
 	 * @param sess
