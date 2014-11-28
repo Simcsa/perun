@@ -258,17 +258,18 @@ public class AttributesManagerBlImpl implements AttributesManagerBl {
 		return attributes;
 	}
 
+	//Temporary changed for cache test purpose
 	public List<Attribute> getAttributes(PerunSession sess, Facility facility, User user) throws InternalErrorException {
 		List<Attribute> attributes =  getAttributesManagerImpl().getAttributes(sess, facility, user);
-		List<Attribute> virtualAttributes = getVirtualAttributes(sess, facility, user);
-
-		//remove virtual attributes with null value
-		Iterator<Attribute> virtualAttributesIterator = virtualAttributes.iterator();
-		while(virtualAttributesIterator.hasNext()) {
-			if(virtualAttributesIterator.next().getValue() == null) virtualAttributesIterator.remove();
-		}
-
-		attributes.addAll(virtualAttributes);
+//		List<Attribute> virtualAttributes = getVirtualAttributes(sess, facility, user);
+//
+//		//remove virtual attributes with null value
+//		Iterator<Attribute> virtualAttributesIterator = virtualAttributes.iterator();
+//		while(virtualAttributesIterator.hasNext()) {
+//			if(virtualAttributesIterator.next().getValue() == null) virtualAttributesIterator.remove();
+//		}
+//
+//		attributes.addAll(virtualAttributes);
 		return attributes;
 	}
 

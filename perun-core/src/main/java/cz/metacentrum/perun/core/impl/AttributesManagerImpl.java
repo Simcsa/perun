@@ -878,12 +878,13 @@ public class AttributesManagerImpl implements AttributesManagerImplApi {
 		}
 	}
 
+	//Temporarily changed for cache test purpose
 	public List<Attribute> getAttributes(PerunSession sess, Facility facility, User user) throws InternalErrorException {
 		try {
 			return jdbc.query("select " + getAttributeMappingSelectQuery("usr_fac") + " from attr_names " +
-					"left join    user_facility_attr_values     usr_fac      on id=usr_fac.attr_id     and   facility_id=? and user_id=? " +
+					"left join    user_facility_attr_values     usr_fac      on id=usr_fac.attr_id " +
 					"where namespace in (?,?) and (usr_fac.attr_value is not null or usr_fac.attr_value_text is not null)",
-					new AttributeRowMapper(sess, this, null), facility.getId(), user.getId(),
+					new AttributeRowMapper(sess, this, null),
 					AttributesManager.NS_USER_FACILITY_ATTR_DEF, AttributesManager.NS_USER_FACILITY_ATTR_OPT);
 		} catch(EmptyResultDataAccessException ex) {
 			log.debug("No attribute for user-facility combination exists.");
