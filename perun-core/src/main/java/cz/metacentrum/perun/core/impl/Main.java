@@ -1,20 +1,27 @@
 package cz.metacentrum.perun.core.impl;
 
 import cz.metacentrum.perun.core.api.Attribute;
+import cz.metacentrum.perun.core.api.AttributeDefinition;
 import cz.metacentrum.perun.core.api.ExtSourcesManager;
 import cz.metacentrum.perun.core.api.Group;
 import cz.metacentrum.perun.core.api.Member;
+import cz.metacentrum.perun.core.api.Perun;
 import cz.metacentrum.perun.core.api.PerunPrincipal;
 import cz.metacentrum.perun.core.api.PerunSession;
+import cz.metacentrum.perun.core.api.Service;
+import cz.metacentrum.perun.core.api.ServiceAttributes;
 import cz.metacentrum.perun.core.api.Status;
 import cz.metacentrum.perun.core.api.User;
 import cz.metacentrum.perun.core.api.Vo;
 import cz.metacentrum.perun.core.bl.PerunBl;
 import cz.metacentrum.perun.core.api.AttributesManager;
+import cz.metacentrum.perun.core.api.Facility;
 import cz.metacentrum.perun.core.api.Resource;
 import cz.metacentrum.perun.core.api.UserExtSource;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
@@ -42,6 +49,8 @@ public class Main {
 	private AbstractApplicationContext springCtx;
 	private PerunSession perunSession;
 	private final static Logger log = LoggerFactory.getLogger(Main.class);
+	private final Integer maxRead = 10000;
+	private final Integer maxWrite = 2000;
 	private final PerunPrincipal pp = new PerunPrincipal("main", ExtSourcesManager.EXTSOURCE_NAME_INTERNAL, ExtSourcesManager.EXTSOURCE_INTERNAL);
 
 	private static BufferedWriter writer;
@@ -68,6 +77,22 @@ public class Main {
 		perun.getAuditer().setLastProcessedId("ldapcConsumer", LastMessageAfterInitializingData);
 	}
 
+	//Main for testing attributes cache
+	public Main() throws Exception {
+		try {
+			this.springCtx = new ClassPathXmlApplicationContext("perun-beans.xml", "perun-datasources.xml", "perun-transaction-manager.xml");
+			this.perun = springCtx.getBean("perun", PerunBl.class);
+			this.perunSession = perun.getPerunSession(pp);
+		} catch (Exception e) {
+			log.error("Application context loading error.", e);
+			throw e;
+		}
+
+		testCacheForMeasuring();
+		//testCache();
+		System.out.println("Cache was tested successfully.");
+	}
+
 	public static void main(String[] args) throws Exception {
 		if(args.length == 0 || args.length > 2) {
 			System.out.println(badUsage(null));
@@ -84,10 +109,210 @@ public class Main {
 				main = new Main(null);
 			}
 			writer.close();
+		} else if(args[0].equals("-test")) {
+			Main main = new Main();
 		} else {
 			System.out.println(badUsage(args[0]));
 			System.out.println(help());
 		}
+	}
+
+	private void testCacheForMeasuring() throws Exception {
+		long startTime;
+		long endTime;
+		BufferedWriter bw = null;
+		int n = 1000;
+
+		try {
+			File file = new File("measuring.csv");
+			bw = new BufferedWriter(new OutputStreamWriter(new FileOutputStream(file)));
+			System.out.println("Measuring without cache.");
+			User user = perun.getUsersManagerBl().getUserById(perunSession, 6701); // Michal Stava
+			AttributeDefinition attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 1364); //user:def:address
+			Attribute attr;
+
+			//Test of getting non-virtual attribute
+			bw.write("getAttribute (non-virtual)");
+			System.out.print("getAttribute (non-virtual)");
+			for (int i = 0; i < n; i++) {
+				startTime = System.currentTimeMillis();
+				attr = perun.getAttributesManagerBl().getAttribute(perunSession, user, attrDef.getName());
+				endTime = System.currentTimeMillis();
+				bw.write("," + (endTime - startTime));
+				System.out.print("," + (endTime - startTime));
+			}
+
+			bw.newLine();
+			System.out.println();
+
+			Facility facility = perun.getFacilitiesManagerBl().getFacilityById(perunSession, 2662); //acct.metacentrum.cz
+			attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 260); //user-fac:virt:login
+
+			// x * using of getAttribute from DB (every call is one sql query) (where x is something big like 1000 or more) - this should be much quicker with cache
+			bw.write("getAttribute - every call is one query (" + maxRead + " queries)");
+			System.out.print("getAttribute - every call is one query (" + maxRead + " queries)");
+			for (int i = 0; i < n; i++) {
+				startTime = System.currentTimeMillis();
+				for(int j = 0; j < maxRead; j++) {
+					attr = perun.getAttributesManagerBl().getAttribute(perunSession, facility, user, attrDef.getName());
+				}
+				endTime = System.currentTimeMillis();
+				bw.write("," + (endTime - startTime));
+				System.out.print("," + (endTime - startTime));
+			}
+
+			bw.newLine();
+			System.out.println();
+
+			facility = perun.getFacilitiesManagerBl().getFacilityById(perunSession, 2662); //acct.metacentrum.cz
+			attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 260); //user-fac:virt:login
+			List<Attribute> attrs = null;
+
+			// x * attribute getting by one query from DB (the same like the one before but now only in 1 query) - this should be almost same quick with cache like with no cache
+			bw.write("getAttributes - in one big query");
+			System.out.print("getAttributes - in one big query");
+			for (int i = 0; i < n; i++) {
+				startTime = System.currentTimeMillis();
+				attrs = perun.getAttributesManagerBl().getAttributes(perunSession, facility, user); //special version getAttributes is used (modified!)
+				endTime = System.currentTimeMillis();
+				bw.write("," + (endTime - startTime));
+				System.out.print("," + (endTime - startTime));
+			}
+
+			bw.newLine();
+			System.out.println();
+
+			String textA = "Na Kopečku 324 Dobšice 67182";
+			String textB = "Na Kopečku 324 Dobšice 67182 Jihomoravský kraj";
+			attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 1364);
+			attr = perun.getAttributesManagerBl().getAttribute(perunSession, user, attrDef.getName());
+
+			// x * write attributes to DB - because we need to know if cache slows these queries
+			bw.write("write using setAttribute (" + maxWrite + " attributes)");
+			System.out.print("write using setAttribute (" + maxWrite + " attributes)");
+			for (int i = 0; i < n; i++) {
+				startTime = System.currentTimeMillis();
+				for(int j = 0; j < maxWrite; j++) {
+					if((i % 2) == 0) attr.setValue(textA);
+					else attr.setValue(textB);
+					perun.getAttributesManagerBl().setAttribute(perunSession, user, attr);
+				}
+				endTime = System.currentTimeMillis();
+				bw.write("," + (endTime - startTime));
+				System.out.print("," + (endTime - startTime));
+			}
+
+			bw.newLine();
+			System.out.println();
+
+			// x * read/write attribute from/to DB (we need to invalidate DB cache)
+			bw.write("read/write using getAttribute/setAttribute (" + maxWrite + " attributes)");
+			System.out.print("read/write using getAttribute/setAttribute (" + maxWrite + " attributes)");
+			for (int i = 0; i < n; i++) {
+				startTime = System.currentTimeMillis();
+				for(int j = 0; j < maxWrite; j++) {
+					Attribute attrIn = perun.getAttributesManagerBl().getAttribute(perunSession, user, attr.getName());
+					if((i % 2) == 0) attrIn.setValue(textA);
+					else attrIn.setValue(textB);
+					perun.getAttributesManagerBl().setAttribute(perunSession, user, attrIn);
+				}
+				endTime = System.currentTimeMillis();
+				bw.write("," + (endTime - startTime));
+				System.out.print("," + (endTime - startTime));
+			}
+
+			bw.newLine();
+			System.out.println();
+		}
+		finally {
+			bw.close();
+		}
+	}
+
+	private void testCache() throws Exception {
+
+		//Test of getting non-virtual attribute before cache is initialized
+		User user = perun.getUsersManagerBl().getUserById(perunSession, 6701); // Michal Stava
+		long startTime;
+		long endTime;
+		AttributeDefinition attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 1364); //user:def:address
+
+		startTime = System.currentTimeMillis();
+		Attribute attr = perun.getAttributesManagerBl().getAttribute(perunSession, user, attrDef.getName());
+		endTime = System.currentTimeMillis();
+		System.out.println("Non-virtual attribute user-def-address was get in: " + (endTime-startTime) + " ms before initializing");
+		System.out.println(attr);
+
+		//Test of getting non-virtual attribute after cache is initialized
+		startTime = System.currentTimeMillis();
+		attr = perun.getAttributesManagerBl().getAttribute(perunSession, user, attrDef.getName());
+		endTime = System.currentTimeMillis();
+		System.out.println("Non-virtual attribute user-def-address was get in: " + (endTime-startTime) + " ms after initializing");
+		System.out.println(attr);
+
+		System.out.println("\n---------------------------------------------\n");
+
+		// x * using of getAttribute from DB (every call is one sql query) (where x is something big like 1000 or more) - this should be much quicker with cache
+		Facility facility = perun.getFacilitiesManagerBl().getFacilityById(perunSession, 2662); //acct.metacentrum.cz
+		attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 260); //user-fac:virt:login
+		startTime = System.currentTimeMillis();
+		for(int i = 0; i < maxRead; i++) {
+			attr = perun.getAttributesManagerBl().getAttribute(perunSession, facility, user, attrDef.getName());
+		}
+		endTime = System.currentTimeMillis();
+		System.out.println( maxRead + " user-facility attributes in " + maxRead + " queries were get in: " + (endTime-startTime) + " ms after initializing");
+		System.out.println("\n---------------------------------------------\n");
+
+		// x * attribute getting by one query from DB (the same like the one before but now only in 1 query) - this should be almost same quick with cache like with no cache
+		facility = perun.getFacilitiesManagerBl().getFacilityById(perunSession, 2662); //acct.metacentrum.cz
+		attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 260); //user-fac:virt:login
+		startTime = System.currentTimeMillis();
+		//special version getAttributes is used (modified!)
+		List<Attribute> attrs = perun.getAttributesManagerBl().getAttributes(perunSession, facility, user);
+		endTime = System.currentTimeMillis();
+		System.out.println("All user-facility attributes in one query were get in: " + (endTime-startTime) + " ms before initializing");
+		System.out.println("\n---------------------------------------------\n");
+		//results - the first call lasted longer (8000 ms vs 6500 ms) probably because of DB cache
+
+		attr = null;
+		for(int j = 0; j < 10; j++) {
+			attrs = new ArrayList<>();
+			startTime = System.currentTimeMillis();
+			//special version getAttributes is used (modified!)
+			attrs = perun.getAttributesManagerBl().getAttributes(perunSession, facility, user);
+			endTime = System.currentTimeMillis();
+			System.out.println("All user-facility attributes in one query were get in: " + (endTime-startTime) + " ms after initializing");
+		}
+		System.out.println("\n---------------------------------------------\n");
+
+		String textA = "Na Kopečku 324 Dobšice 67182";
+		String textB = "Na Kopečku 324 Dobšice 67182 Jihomoravský kraj";
+		attrDef = perun.getAttributesManagerBl().getAttributeDefinitionById(perunSession, 1364);
+		attr = perun.getAttributesManagerBl().getAttribute(perunSession, user, attrDef.getName());
+
+		// x * write attributes to DB - because we need to know if cache slows these queries
+		startTime = System.currentTimeMillis();
+		for(Integer i = 0; i < maxWrite; i++) {
+			if((i % 2) == 0) attr.setValue(textA);
+			else attr.setValue(textB);
+			if((i % 1000) == 0) System.out.println(i);
+			perun.getAttributesManagerBl().setAttribute(perunSession, user, attr);
+		}
+		endTime = System.currentTimeMillis();
+		System.out.println("Writing " + maxWrite + " attributes to db was done in: " + (endTime-startTime) + " ms");
+		System.out.println("\n---------------------------------------------\n");
+
+		// x * read/write attribute from/to DB (we need to invalidate DB cache)
+		startTime = System.currentTimeMillis();
+		for(Integer i = 0; i < maxWrite; i++) {
+			Attribute attrIn = perun.getAttributesManagerBl().getAttribute(perunSession, user, attr.getName());
+			if((i % 2) == 0) attrIn.setValue(textA);
+			else attrIn.setValue(textB);
+			perun.getAttributesManagerBl().setAttribute(perunSession, user, attrIn);
+		}
+		endTime = System.currentTimeMillis();
+		System.out.println("Reading/Writing " + maxWrite + " (for each) attributes to db was done in: " + (endTime-startTime) + " ms");
+		System.out.println("\n---------------------------------------------\n");
 	}
 
 	private static String badUsage(String badArgument) {
