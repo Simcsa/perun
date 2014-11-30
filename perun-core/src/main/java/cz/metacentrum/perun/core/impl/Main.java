@@ -135,9 +135,11 @@ public class Main {
 			bw.write("getAttribute (non-virtual)");
 			System.out.print("getAttribute (non-virtual)");
 			for (int i = 0; i < n; i++) {
-				startTime = System.currentTimeMillis();
+				//startTime = System.currentTimeMillis();
+				startTime = System.nanoTime();
 				attr = perun.getAttributesManagerBl().getAttribute(perunSession, user, attrDef.getName());
-				endTime = System.currentTimeMillis();
+				//endTime = System.currentTimeMillis();
+				endTime = System.nanoTime();
 				bw.write("," + (endTime - startTime));
 				System.out.print("," + (endTime - startTime));
 			}
