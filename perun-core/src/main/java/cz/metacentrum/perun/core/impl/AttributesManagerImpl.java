@@ -2,7 +2,8 @@ package cz.metacentrum.perun.core.impl;
 
 import java.util.*;
 
-import cz.metacentrum.perun.core.api.ActionType;
+import cz.metacentrum.perun.core.api.*;
+
 import java.io.IOException;
 
 import java.lang.reflect.InvocationTargetException;
@@ -19,6 +20,10 @@ import javax.sql.DataSource;
 
 import cz.metacentrum.perun.core.implApi.modules.attributes.MemberGroupAttributesModuleImplApi;
 import cz.metacentrum.perun.core.implApi.modules.attributes.MemberGroupVirtualAttributesModuleImplApi;
+import org.apache.lucene.search.Query;
+import org.hibernate.search.query.dsl.QueryBuilder;
+import org.infinispan.query.CacheQuery;
+import org.infinispan.query.SearchManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,24 +46,6 @@ import org.springframework.jdbc.support.lob.OracleLobHandler;
 
 import org.springframework.jdbc.support.nativejdbc.CommonsDbcpNativeJdbcExtractor;
 
-import cz.metacentrum.perun.core.api.BeansUtils;
-import cz.metacentrum.perun.core.api.Attribute;
-import cz.metacentrum.perun.core.api.AttributeDefinition;
-import cz.metacentrum.perun.core.api.AttributeRights;
-import cz.metacentrum.perun.core.api.AttributesManager;
-import cz.metacentrum.perun.core.api.Auditable;
-import cz.metacentrum.perun.core.api.Facility;
-import cz.metacentrum.perun.core.api.Group;
-import cz.metacentrum.perun.core.api.Host;
-import cz.metacentrum.perun.core.api.Member;
-import cz.metacentrum.perun.core.api.Perun;
-import cz.metacentrum.perun.core.api.PerunSession;
-import cz.metacentrum.perun.core.api.Resource;
-import cz.metacentrum.perun.core.api.RichAttribute;
-import cz.metacentrum.perun.core.api.Role;
-import cz.metacentrum.perun.core.api.Service;
-import cz.metacentrum.perun.core.api.User;
-import cz.metacentrum.perun.core.api.Vo;
 import cz.metacentrum.perun.core.api.exceptions.ActionTypeNotExistsException;
 
 import cz.metacentrum.perun.core.api.exceptions.AttributeExistsException;
@@ -595,6 +582,9 @@ public class AttributesManagerImpl implements AttributesManagerImplApi {
 	}
 
 	public List<Attribute> getAttributes(PerunSession sess, Facility facility) throws InternalErrorException {
+		List<Attribute> attrs = perun.getCacheManager().getAllNonEmptyAttributesByPrimaryHolder(facility.getId(), Holder.HolderType.FACILITY);
+		if (attrs != null && !attrs.isEmpty()) return attrs;
+
 		try {
 			return jdbc.query("select " + getAttributeMappingSelectQuery("fac") + " from attr_names " +
 					"left join facility_attr_values fac    on id=fac.attr_id and fac.facility_id=? " +
@@ -1201,12 +1191,54 @@ public class AttributesManagerImpl implements AttributesManagerImplApi {
 
 	@Override
 	public Attribute getAttribute(PerunSession sess, Member member, Group group, String attributeName) throws InternalErrorException, AttributeNotExistsException {
+		SearchManager searchManager = perun.getCacheManager().getSearchManager();
+
+		QueryBuilder queryBuilder = searchManager.buildQueryBuilderForClass(AttributeHolders.class).get();
+
+		Query luceneQuery = queryBuilder.bool()
+								.must(queryBuilder.keyword().onField("primaryHolder.holderId").matching(member.getId()).createQuery())
+								.must(queryBuilder.keyword().onField("primaryHolder.holderType").matching(Holder.HolderType.MEMBER).createQuery())
+								.must(queryBuilder.keyword().onField("secondaryHolder.holderId").matching(group.getId()).createQuery())
+								.must(queryBuilder.keyword().onField("secondaryHolder.holderType").matching(Holder.HolderType.GROUP).createQuery())
+								.must(queryBuilder.keyword().onField("name").matching(attributeName).createQuery()).createQuery();
+
+		CacheQuery query = searchManager.getQuery(luceneQuery, AttributeHolders.class);
+
+		System.out.println("Hibernate Search Query result: " + query.list());
+
 		try {
 			//member-group attributes, member core attributes
-			return jdbc.queryForObject("select " + getAttributeMappingSelectQuery("mem_gr") + " from attr_names " +
+			Attribute attr = jdbc.queryForObject("select " + getAttributeMappingSelectQuery("mem_gr") + " from attr_names " +
 							"left join member_group_attr_values mem_gr on id=mem_gr.attr_id and mem_gr.group_id=? and member_id=? " +
 							"where attr_name=?",
 					new AttributeRowMapper(sess, this, null), group.getId(), member.getId(), attributeName);
+
+			Holder primaryHolder = new Holder(member.getId(), Holder.HolderType.MEMBER);
+			Holder secondaryHolder = new Holder(group.getId(), Holder.HolderType.GROUP);
+			AttributeIdWithHolders attrId = new AttributeIdWithHolders(attr.getId(), primaryHolder, secondaryHolder);
+			AttributeHolders attrHolders = new AttributeHolders(attr, primaryHolder, secondaryHolder);
+			perun.getCacheManager().getCache().put(attrId, attrHolders);
+
+			System.out.println(perun.getCacheManager().getCache().get(attrId));
+
+			queryBuilder = searchManager.buildQueryBuilderForClass(AttributeHolders.class).get();
+
+			luceneQuery = queryBuilder.bool()
+					.must(queryBuilder.keyword().onField("primaryHolder.holderId").matching(member.getId()).createQuery())
+					.must(queryBuilder.keyword().onField("primaryHolder.holderType").matching(Holder.HolderType.MEMBER).createQuery())
+					.must(queryBuilder.keyword().onField("secondaryHolder.holderId").matching(group.getId()).createQuery())
+					.must(queryBuilder.keyword().onField("secondaryHolder.holderType").matching(Holder.HolderType.GROUP).createQuery())
+					.must(queryBuilder.keyword().onField("name").matching(attributeName).createQuery()).createQuery();
+
+			query = searchManager.getQuery(luceneQuery, AttributeHolders.class);
+
+
+			System.out.println(attributeName);
+			System.out.println("Hibernate Search Query result: " + query.list().get(0));
+
+			AttributeHolders attrH = (AttributeHolders) query.list().get(0);
+
+			return attrH;
 
 		} catch(EmptyResultDataAccessException ex) {
 			throw new AttributeNotExistsException("Attribute name: \"" + attributeName +"\"", ex);

@@ -50,6 +50,7 @@ import cz.metacentrum.perun.core.bl.UsersManagerBl;
 import cz.metacentrum.perun.core.bl.VosManagerBl;
 import cz.metacentrum.perun.core.impl.Auditer;
 import cz.metacentrum.perun.core.impl.PerunSessionImpl;
+import cz.metacentrum.perun.core.impl.CacheManager;
 
 /**
  * Implementation of Perun.
@@ -92,6 +93,7 @@ public class PerunBlImpl implements PerunBl {
 	private SearcherBl searcherBl = null;
 
 	private Auditer auditer = null;
+	private CacheManager cacheManager = null;
 
 	final static Logger log = LoggerFactory.getLogger(PerunBlImpl.class);
 
@@ -406,6 +408,14 @@ public class PerunBlImpl implements PerunBl {
 
 	public void setSearcherBl(SearcherBl searcherBl) {
 		this.searcherBl = searcherBl;
+	}
+
+	public CacheManager getCacheManager() {
+		return cacheManager;
+	}
+
+	public void setCacheManager(CacheManager cacheManager) {
+		this.cacheManager = cacheManager;
 	}
 
 	@Override

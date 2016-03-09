@@ -30,12 +30,14 @@ import java.util.concurrent.Executor;
 public class PerunConnection implements Connection {
 	
 	private Auditer auditer;
+	private CacheManager cacheManager;
 	private final Connection connectionImpl;
 	
 	// Constructor
-	public PerunConnection(Connection connectionImpl, Auditer auditer) {
+	public PerunConnection(Connection connectionImpl, Auditer auditer, CacheManager cacheManager) {
 		this.connectionImpl = connectionImpl;
 		this.auditer = auditer;
+		this.cacheManager = cacheManager;
 	}
 	
 	
@@ -44,12 +46,14 @@ public class PerunConnection implements Connection {
 	@Override
 	public Savepoint setSavepoint() throws SQLException {
 		auditer.newNestedTransaction();
+		cacheManager.newNestedTransaction();
 		return connectionImpl.setSavepoint();
 	}
 
 	@Override
 	public Savepoint setSavepoint(String string) throws SQLException {
 		auditer.newNestedTransaction();
+		cacheManager.newNestedTransaction();
 		return connectionImpl.setSavepoint(string);
 	}
 		
