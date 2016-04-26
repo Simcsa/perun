@@ -10,16 +10,14 @@ import org.springframework.transaction.support.ResourceTransactionManager;
 
 import javax.transaction.*;
 
-public class PerunTransactionManager extends DataSourceTransactionManager implements ResourceTransactionManager, InitializingBean {
+public class PerunTestTransactionManager extends DataSourceTransactionManager implements ResourceTransactionManager, InitializingBean {
 
 	private static final long serialVersionUID = 1L;
 
-	private Auditer auditer;
 	private CacheManager cacheManager;
 
 	@Override
 	protected void doBegin(Object transaction, TransactionDefinition definition) {
-		this.getAuditer().newTopLevelTransaction();
 		this.getCacheManager().newTopLevelTransaction();
 		super.doBegin(transaction, definition);
 	}
@@ -28,29 +26,18 @@ public class PerunTransactionManager extends DataSourceTransactionManager implem
 	protected void doCommit(DefaultTransactionStatus status) {
 		this.getCacheManager().commit();
 		super.doCommit(status);
-		this.getAuditer().flush();
 	}
 
 	@Override
 	protected void doRollback(DefaultTransactionStatus status) {
 		this.getCacheManager().rollback();
 		super.doRollback(status);
-		this.getAuditer().clean();
 	}
 
 	@Override
 	protected void doCleanupAfterCompletion(Object transaction) {
 		this.getCacheManager().clean();
 		super.doCleanupAfterCompletion(transaction);
-		this.getAuditer().clean();
-	}
-
-	public Auditer getAuditer() {
-		return this.auditer;
-	}
-
-	public void setAuditer(Auditer auditer) {
-		this.auditer = auditer;
 	}
 
 	public CacheManager getCacheManager() {

@@ -46,6 +46,7 @@
             <property name="removeAbandonedTimeout" value="300" />
             <property name="testOnBorrow" value="true" />
             <property name="auditer" ref="auditer"/>
+            <property name="cacheManager" ref="cacheManager"/>
         </bean>
     </beans>
 

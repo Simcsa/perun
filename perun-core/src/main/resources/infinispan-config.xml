@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<infinispan
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="urn:infinispan:config:8.1 http://www.infinispan.org/schemas/infinispan-config-8.1.xsd"
+        xmlns="urn:infinispan:config:8.1">
+
+    <cache-container default-cache="default">
+        <local-cache name="transactionalCache" deadlock-detection-spin="1000">
+            <transaction transaction-manager-lookup="org.infinispan.transaction.lookup.JBossStandaloneJTAManagerLookup"
+                         mode="FULL_XA" locking="PESSIMISTIC"/>
+            <store-as-binary keys="true" values="true"/>
+            <indexing index="LOCAL" auto-config="true">
+            </indexing>
+        </local-cache>
+
+        <local-cache name="testCache" deadlock-detection-spin="1000">
+            <transaction transaction-manager-lookup="org.infinispan.transaction.lookup.JBossStandaloneJTAManagerLookup"
+                         mode="FULL_XA" locking="PESSIMISTIC"/>
+            <store-as-binary keys="true" values="true"/>
+            <indexing index="LOCAL" auto-config="true">
+            </indexing>
+        </local-cache>
+
+        <local-cache name="simpleCache">
+            <store-as-binary keys="true" values="true"/>
+            <indexing index="LOCAL" auto-config="true"/>
+        </local-cache>
+    </cache-container>
+
+</infinispan>
