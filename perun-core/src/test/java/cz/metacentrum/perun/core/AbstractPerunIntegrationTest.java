@@ -5,6 +5,8 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+import cz.metacentrum.perun.core.impl.CacheManager;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,9 +70,14 @@ public abstract class AbstractPerunIntegrationTest {
 	}
 
 	@Before
-	public void setUpSess() throws Exception {
+	public void setUpSessAndCache() throws Exception {
 		final PerunPrincipal pp = new PerunPrincipal("perunTests", ExtSourcesManager.EXTSOURCE_NAME_INTERNAL, ExtSourcesManager.EXTSOURCE_INTERNAL);
 		sess = perun.getPerunSession(pp);
+		CacheManager.setCacheDisabled(true);
 	}
 
+	@After
+	public void tearDownCache() {
+		CacheManager.setCacheDisabled(false);
+	}
 }
