@@ -531,6 +531,13 @@ public class UsersManagerBlImpl implements UsersManagerBl {
 		return allSearchingUsers;
 	}
 
+	public List<User> getUsersWithSpecificVo(PerunSession sess, Vo vo, String searchString) throws InternalErrorException {
+		List<User> allFoundUsers = this.findUsers(sess, searchString);
+		List<User> allVoUsers = getUsersManagerImpl().getUsersByVo(sess, vo);
+		allFoundUsers.retainAll(allVoUsers);
+		return allFoundUsers;
+	}
+
 	public List<Resource> getAllowedResources(PerunSession sess, Facility facility, User user) throws InternalErrorException {
 		return getPerunBl().getResourcesManagerBl().getAllowedResources(sess, facility, user);
 	}
@@ -1779,5 +1786,10 @@ public class UsersManagerBlImpl implements UsersManagerBl {
 
 	public int getUsersCount(PerunSession sess) throws InternalErrorException {
 		return getUsersManagerImpl().getUsersCount(sess);
+	}
+
+	@Override
+	public List<User> getUsersByVo(PerunSession sess, Vo vo) throws InternalErrorException {
+		return getUsersManagerImpl().getUsersByVo(sess, vo);
 	}
 }

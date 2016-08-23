@@ -3,6 +3,7 @@ package cz.metacentrum.perun.core.api;
 import java.util.List;
 
 import cz.metacentrum.perun.core.api.exceptions.AlreadyAdminException;
+import cz.metacentrum.perun.core.api.exceptions.ExtSourceNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.GroupNotAdminException;
 import cz.metacentrum.perun.core.api.exceptions.GroupNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.InternalErrorException;
@@ -133,6 +134,25 @@ public interface VosManager {
 	 * @throws PrivilegeException
 	 */
 	Vo getVoById(PerunSession perunSession, int id) throws VoNotExistsException, InternalErrorException, PrivilegeException;
+
+	/**
+	 * Gets all users from Perun and from ExtSources of the vo by searchString. It returns also users that are already members of the vo.
+	 * It returns them in form of MemberCandidate objects which contain also attributes specified in attrNames.
+	 *
+	 * @param sess perun session
+	 * @param vo vo
+	 * @param attrNames attribute names to return
+	 * @param searchString depends on the extSource of the VO, could by part of the name or email
+	 * @return list of MemberCandidates
+	 * @throws InternalErrorException
+	 * @throws MemberNotExistsException
+	 * @throws ExtSourceNotExistsException
+	 * @throws VoNotExistsException
+	 * @throws PrivilegeException
+	 */
+	List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, List<String> attrNames, String searchString) throws InternalErrorException, MemberNotExistsException, ExtSourceNotExistsException, VoNotExistsException, PrivilegeException;
+
+	List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, Group group, List<String> attrNames, String searchString) throws InternalErrorException, MemberNotExistsException, ExtSourceNotExistsException, VoNotExistsException, PrivilegeException, GroupNotExistsException;
 
 	/**
 	 * Finds users, who can join the Vo.

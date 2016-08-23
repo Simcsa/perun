@@ -566,6 +566,17 @@ public interface UsersManagerBl {
 	List<User> getUsersWithoutSpecificVo(PerunSession sess, Vo vo, String searchString) throws InternalErrorException;
 
 	/**
+	 * Returns list of users who match the searchString, searching name, email and logins and are members in specific VO.
+	 *
+	 * @param sess perun session
+	 * @param vo virtual organization
+	 * @param searchString string to search by
+	 * @return list of users
+	 * @throws InternalErrorException
+	 */
+	List<User> getUsersWithSpecificVo(PerunSession sess, Vo vo, String searchString) throws InternalErrorException;
+
+	/**
 	 * Returns list of users who matches the searchString
 	 *
 	 * @param sess
@@ -1084,4 +1095,14 @@ public interface UsersManagerBl {
 	 * @throws InternalErrorException
 	 */
 	int getUsersCount(PerunSession perunSession) throws InternalErrorException;
+
+	/**
+	 * Return users which have member in VO.
+	 *
+	 * @param sess perun session
+	 * @param vo virtual organization
+	 * @return list of users
+	 * @throws InternalErrorException
+	 */
+	List<User> getUsersByVo(PerunSession sess, Vo vo) throws InternalErrorException;
 }

@@ -8,6 +8,7 @@ import java.util.Set;
 import cz.metacentrum.perun.core.api.AuthzResolver;
 import cz.metacentrum.perun.core.api.Candidate;
 import cz.metacentrum.perun.core.api.Group;
+import cz.metacentrum.perun.core.api.MemberCandidate;
 import cz.metacentrum.perun.core.api.PerunBean;
 import cz.metacentrum.perun.core.api.PerunSession;
 import cz.metacentrum.perun.core.api.RichUser;
@@ -17,9 +18,11 @@ import cz.metacentrum.perun.core.api.Vo;
 import cz.metacentrum.perun.core.api.VosManager;
 import cz.metacentrum.perun.core.api.exceptions.AlreadyAdminException;
 import cz.metacentrum.perun.core.api.exceptions.ConsistencyErrorException;
+import cz.metacentrum.perun.core.api.exceptions.ExtSourceNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.GroupNotAdminException;
 import cz.metacentrum.perun.core.api.exceptions.GroupNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.InternalErrorException;
+import cz.metacentrum.perun.core.api.exceptions.MemberNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.PrivilegeException;
 import cz.metacentrum.perun.core.api.exceptions.RelationExistsException;
 import cz.metacentrum.perun.core.api.exceptions.RoleNotSupportedException;
@@ -202,6 +205,45 @@ public class VosManagerEntry implements VosManager {
 				}
 
 		return vo;
+	}
+
+	@Override
+	public List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, List<String> attrNames, String searchString) throws InternalErrorException, MemberNotExistsException, ExtSourceNotExistsException, VoNotExistsException, PrivilegeException {
+		Utils.notNull(sess, "sess");
+		Utils.notNull(searchString, "searchString");
+		Utils.notNull(attrNames, "attrNames");
+		vosManagerBl.checkVoExists(sess, vo);
+
+		// Authorization - Vo admin required
+		if (!AuthzResolver.isAuthorized(sess, Role.VOADMIN, vo) &&
+				//TODO VOOBSERVER rights?
+				!AuthzResolver.isAuthorized(sess, Role.VOOBSERVER, vo)) {
+			throw new PrivilegeException(sess, "getCompleteCandidates");
+		}
+
+		return vosManagerBl.getCompleteCandidates(sess, vo, attrNames, searchString);
+	}
+
+	@Override
+	public List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, Group group, List<String> attrNames, String searchString) throws InternalErrorException, MemberNotExistsException, ExtSourceNotExistsException, VoNotExistsException, PrivilegeException, GroupNotExistsException {
+		Utils.notNull(sess, "sess");
+		Utils.notNull(searchString, "searchString");
+		Utils.notNull(attrNames, "attrNames");
+		vosManagerBl.checkVoExists(sess, vo);
+		perunBl.getGroupsManagerBl().checkGroupExists(sess, group);
+
+		// Authorization - Vo admin
+		if (AuthzResolver.isAuthorized(sess, Role.VOADMIN, vo) &&
+				//TODO VOOBSERVER rights?
+				!AuthzResolver.isAuthorized(sess, Role.VOOBSERVER, vo)) {
+			return vosManagerBl.getCompleteCandidates(sess, vo, group, attrNames, searchString, true);
+		}
+		// Authorization - Group admin
+		if (AuthzResolver.isAuthorized(sess, Role.GROUPADMIN, vo)) {
+			return vosManagerBl.getCompleteCandidates(sess, vo, group, attrNames, searchString, false);
+		}
+
+		throw new PrivilegeException(sess, "getCompleteCandidates");
 	}
 
 	public List<Candidate> findCandidates(PerunSession sess, Vo vo, String searchString, int maxNumOfResults) throws InternalErrorException, VoNotExistsException, PrivilegeException {

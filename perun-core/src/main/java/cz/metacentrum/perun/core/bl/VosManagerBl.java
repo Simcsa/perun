@@ -4,6 +4,7 @@ import java.util.List;
 
 import cz.metacentrum.perun.core.api.Candidate;
 import cz.metacentrum.perun.core.api.Group;
+import cz.metacentrum.perun.core.api.MemberCandidate;
 import cz.metacentrum.perun.core.api.PerunBean;
 import cz.metacentrum.perun.core.api.PerunSession;
 import cz.metacentrum.perun.core.api.RichUser;
@@ -11,8 +12,10 @@ import cz.metacentrum.perun.core.api.Role;
 import cz.metacentrum.perun.core.api.User;
 import cz.metacentrum.perun.core.api.Vo;
 import cz.metacentrum.perun.core.api.exceptions.AlreadyAdminException;
+import cz.metacentrum.perun.core.api.exceptions.ExtSourceNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.GroupNotAdminException;
 import cz.metacentrum.perun.core.api.exceptions.InternalErrorException;
+import cz.metacentrum.perun.core.api.exceptions.MemberNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.RelationExistsException;
 import cz.metacentrum.perun.core.api.exceptions.UserNotAdminException;
 import cz.metacentrum.perun.core.api.exceptions.UserNotExistsException;
@@ -106,6 +109,23 @@ public interface VosManagerBl {
 	 * @throws InternalErrorException
 	 */
 	Vo getVoById(PerunSession perunSession, int id) throws InternalErrorException, VoNotExistsException;
+
+	/**
+	 * Gets all users from Perun and from ExtSources of the vo by searchString. It returns also users that are already members of the vo.
+	 * It returns them in form of MemberCandidate objects which contain also attributes specified in attrNames.
+	 *
+	 * @param sess perun session
+	 * @param vo vo
+	 * @param attrNames attribute names to return
+	 * @param searchString depends on the extSource of the VO, could by part of the name or email
+	 * @return list of MemberCandidates
+	 * @throws InternalErrorException
+	 * @throws MemberNotExistsException
+	 * @throws ExtSourceNotExistsException
+	 */
+	List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, List<String> attrNames, String searchString) throws InternalErrorException, MemberNotExistsException, ExtSourceNotExistsException;
+
+	List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, Group group, List<String> attrNames, String searchString, boolean voAdmin);
 
 	/**
 	 * Finds users, who can join the Vo.

@@ -1,28 +1,15 @@
 package cz.metacentrum.perun.core.blImpl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import cz.metacentrum.perun.core.api.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import cz.metacentrum.perun.core.api.Candidate;
-import cz.metacentrum.perun.core.api.ExtSource;
-import cz.metacentrum.perun.core.api.Facility;
-import cz.metacentrum.perun.core.api.Group;
-import cz.metacentrum.perun.core.api.Host;
-import cz.metacentrum.perun.core.api.Member;
-import cz.metacentrum.perun.core.api.Pair;
-import cz.metacentrum.perun.core.api.PerunBean;
-import cz.metacentrum.perun.core.api.PerunSession;
-import cz.metacentrum.perun.core.api.Resource;
-import cz.metacentrum.perun.core.api.RichUser;
-import cz.metacentrum.perun.core.api.Role;
-import cz.metacentrum.perun.core.api.Service;
-import cz.metacentrum.perun.core.api.User;
-import cz.metacentrum.perun.core.api.Vo;
-import cz.metacentrum.perun.core.api.VosManager;
 import cz.metacentrum.perun.core.api.exceptions.AlreadyAdminException;
 import cz.metacentrum.perun.core.api.exceptions.AttributeNotExistsException;
 import cz.metacentrum.perun.core.api.exceptions.CandidateNotExistsException;
@@ -209,6 +196,225 @@ public class VosManagerBlImpl implements VosManagerBl {
 
 	public Vo getVoById(PerunSession sess, int id) throws InternalErrorException, VoNotExistsException {
 		return getVosManagerImpl().getVoById(sess, id);
+	}
+
+	@Override
+	public List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, List<String> attrNames, String searchString) throws InternalErrorException, MemberNotExistsException, ExtSourceNotExistsException {
+		List<MemberCandidate> memberCandidates = new ArrayList<>();
+
+		List<User> users = perunBl.getUsersManagerBl().findUsers(sess, searchString);
+		List<User> voUsers = perunBl.getUsersManagerBl().getUsersWithSpecificVo(sess, vo, searchString);
+		users.removeAll(voUsers);
+
+		// Creates member candidates from users that are not members in the vo
+		// TODO duplicated code
+		for(User user: users) {
+			List<UserExtSource> userExtSources = getPerunBl().getUsersManagerBl().getUserExtSources(sess, user);
+			UserExtSource userExtSource = null;
+			for(UserExtSource ues : userExtSources) {
+				if(ues.getExtSource().getName().equals("PERUN")) {
+					userExtSource = ues;
+				}
+			}
+			List<Attribute> userAttributes = getPerunBl().getAttributesManagerBl().getAttributes(sess, user, attrNames);
+			memberCandidates.add(new MemberCandidate(userExtSource, userExtSources, userAttributes));
+		}
+		// Creates member candidates from users that are members in the vo
+		for(User user: voUsers) {
+			List<UserExtSource> userExtSources = getPerunBl().getUsersManagerBl().getUserExtSources(sess, user);
+			UserExtSource userExtSource = null;
+			for(UserExtSource ues : userExtSources) {
+				if(ues.getExtSource().getName().equals("PERUN")) {
+					userExtSource = ues;
+				}
+			}
+			List<Attribute> userAttributes = getPerunBl().getAttributesManagerBl().getAttributes(sess, user, attrNames);
+			Member member = perunBl.getMembersManagerBl().getMemberByUser(sess, vo, user);
+			memberCandidates.add(new MemberCandidate(member, userExtSource, userExtSources, userAttributes));
+		}
+
+		try {
+			// Iterate through all registered extSources
+			for (ExtSource source : getPerunBl().getExtSourcesManagerBl().getVoExtSources(sess, vo)) {
+
+				// Info if this is only simple ext source, change behavior if not
+				boolean simpleExtSource = true;
+
+				// Get potential subjects from the extSource
+				List<Map<String, String>> subjects;
+				try {
+					if(source instanceof ExtSourceApi) {
+						// find subjects with all their properties
+						subjects = ((ExtSourceApi) source).findSubjects(searchString);
+						simpleExtSource = false;
+					} else {
+						// find subjects only with logins - they then must be retrieved by login
+						subjects = ((ExtSourceSimpleApi) source).findSubjectsLogins(searchString);
+					}
+				} catch (ExtSourceUnsupportedOperationException e1) {
+					log.warn("ExtSource {} doesn't support findSubjects", source.getName());
+					continue;
+				} catch (InternalErrorException e) {
+					log.error("Error occurred on ExtSource {},  Exception {}.", source.getName(), e);
+					continue;
+				} finally {
+					try {
+						((ExtSourceSimpleApi) source).close();
+					} catch (ExtSourceUnsupportedOperationException e) {
+						// ExtSource doesn't support that functionality, so silently skip it.
+					} catch (InternalErrorException e) {
+						log.error("Can't close extSource connection. Cause: {}", e);
+					}
+				}
+
+				Set<String> uniqueLogins = new HashSet<>();
+				for (Map<String, String> s : subjects) {
+					// Check if the user has unique identifier within extSource
+					if ((s.get("login") == null) || (s.get("login") != null && ((String) s.get("login")).isEmpty())) {
+						log.error("User '{}' cannot be added, because he/she doesn't have a unique identifier (login)", s);
+						// Skip to another user
+						continue;
+					}
+
+					String extLogin = (String) s.get("login");
+
+					// check uniqueness of every login in extSource
+					if(uniqueLogins.contains(extLogin)) {
+						throw new InternalErrorException("There are more than 1 login '" + extLogin + "' getting from extSource '" + source + "'");
+					} else {
+						uniqueLogins.add(extLogin);
+					}
+
+					// Get Candidate
+					Candidate candidate;
+					try {
+						if(simpleExtSource) {
+							// retrieve data about subjects from ext source based on ext. login
+							candidate = getPerunBl().getExtSourcesManagerBl().getCandidate(sess, source, extLogin);
+						} else {
+							// retrieve data about subjects from subjects we already have locally
+							candidate = getPerunBl().getExtSourcesManagerBl().getCandidate(sess, s, source, extLogin);
+						}
+					} catch (ExtSourceNotExistsException e) {
+						throw new ConsistencyErrorException("Getting candidate from non-existing extSource " + source, e);
+					} catch (CandidateNotExistsException e) {
+						throw new ConsistencyErrorException("findSubjects returned that candidate, but getCandidate cannot find him using login " + extLogin, e);
+					} catch (ExtSourceUnsupportedOperationException e) {
+						throw new InternalErrorException("extSource supports findSubjects but not getCandidate???", e);
+					}
+
+					List<Attribute> userAttributes = getPerunBl().getAttributesManagerBl().getAttributes(sess, candidate, attrNames);
+
+					try {
+						Member member = getPerunBl().getMembersManagerBl().getMemberByUserExtSources(sess, vo, candidate.getUserExtSources());
+						// Candidate is already a member of the VO
+						memberCandidates.add(new MemberCandidate(member, candidate.getUserExtSource(), candidate.getUserExtSources(), userAttributes));
+
+					} catch (MemberNotExistsException e) {
+						// Candidate is not a member of the VO
+						memberCandidates.add(new MemberCandidate(candidate.getUserExtSource(), candidate.getUserExtSources(), userAttributes));
+					}
+				}
+			}
+		} catch (RuntimeException e) {
+			throw new InternalErrorException(e);
+		}
+
+		List<List<MemberCandidate>> result = new ArrayList<>();
+
+		for (MemberCandidate outerMC : memberCandidates) {
+			for (MemberCandidate innerMC : memberCandidates) {
+
+				if (outerMC.equals(innerMC)) continue;
+
+				if (compareUserExtSourceLists(outerMC.getUserExtSources(), innerMC.getUserExtSources())) {
+					checkList(result, outerMC, innerMC);
+				} else {
+					List<MemberCandidate> newList = new ArrayList<>();
+					newList.add(outerMC);
+					result.add(newList);
+				}
+			}
+
+		}
+
+
+
+
+
+
+
+
+
+
+
+
+		Map<UserExtSource, List<MemberCandidate>> memberCandidatesGroupedByUserExtSource = new HashMap<>();
+
+		for(MemberCandidate memberCandidate: memberCandidates) {
+			UserExtSource userExtSource = memberCandidate.getUserExtSource();
+			List<MemberCandidate> memberCandidatesList = new ArrayList<>();
+
+			if(memberCandidatesGroupedByUserExtSource.get(userExtSource) != null) {
+				memberCandidatesList = memberCandidatesGroupedByUserExtSource.get(userExtSource);
+			}
+
+			memberCandidatesList.add(memberCandidate);
+			memberCandidatesGroupedByUserExtSource.put(userExtSource, memberCandidatesList);
+		}
+
+		List<MemberCandidate> memberCandidatesToReturn = new ArrayList<>();
+
+		for(List<MemberCandidate> memberCandidatesList: memberCandidatesGroupedByUserExtSource.values()) {
+			boolean memberOfVo = false;
+			for(MemberCandidate memberCandidate: memberCandidatesList) {
+				if(memberCandidate.getMember() != null) {
+					memberCandidatesToReturn.add(memberCandidate);
+					memberOfVo = true;
+					break;
+				}
+			}
+			if(!memberOfVo) {
+				memberCandidatesToReturn.addAll(memberCandidates);
+			}
+		}
+
+		return memberCandidatesToReturn;
+	}
+
+	@Override
+	public List<MemberCandidate> getCompleteCandidates(PerunSession sess, Vo vo, Group group, List<String> attrNames, String searchString, boolean voAdmin) {
+		return null;
+	}
+
+	private boolean compareUserExtSourceLists(List<UserExtSource> list1, List<UserExtSource> list2) {
+		for (UserExtSource ues1 : list1) {
+			for (UserExtSource ues2 : list2) {
+				if (ues1.equals(ues2)) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	private void checkList(List<List<MemberCandidate>> result, MemberCandidate memberCandidate1, MemberCandidate memberCandidate2) {
+		boolean present = false;
+		for (List<MemberCandidate> memberCandidateList : result) {
+			if (memberCandidateList.contains(memberCandidate1)) {
+				memberCandidateList.add(memberCandidate2);
+				present = true;
+				break;
+			}
+		}
+
+		if (!present) {
+			List<MemberCandidate> newList = new ArrayList<>();
+			newList.add(memberCandidate1);
+			newList.add(memberCandidate2);
+			result.add(newList);
+		}
 	}
 
 	public List<Candidate> findCandidates(PerunSession sess, Vo vo, String searchString, int maxNumOfResults) throws InternalErrorException {

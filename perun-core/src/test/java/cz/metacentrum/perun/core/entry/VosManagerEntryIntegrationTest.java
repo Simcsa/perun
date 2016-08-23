@@ -5,9 +5,14 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
+import cz.metacentrum.perun.core.api.Attribute;
+import cz.metacentrum.perun.core.api.AttributesManager;
+import cz.metacentrum.perun.core.api.MemberCandidate;
+import cz.metacentrum.perun.core.api.UsersManager;
 import org.junit.Before;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -36,7 +41,17 @@ public class VosManagerEntryIntegrationTest extends AbstractPerunIntegrationTest
 
 	private VosManager vosManagerEntry;
 	private Vo myVo;
-	private ExtSource es;
+	private Vo myVo1;
+	private ExtSource extSource;
+	private User user;
+
+	String extLogin = "";        // his login in external source
+	final UserExtSource userExtSource = new UserExtSource();   // create new User Ext Source
+	private UsersManager usersManager;
+	private MembersManager membersManager;
+	private AttributesManager attributesManager;
+	private ExtSourcesManager extSourcesManager;
+
 
 	private final int someNumber = 55;
 	private final String voShortName = "TestShortN-" + someNumber;
@@ -47,9 +62,14 @@ public class VosManagerEntryIntegrationTest extends AbstractPerunIntegrationTest
 	@Before
 	public void setUp() throws Exception {
 		vosManagerEntry = perun.getVosManager();
+		usersManager = perun.getUsersManager();
+		membersManager = perun.getMembersManager();
+		attributesManager = perun.getAttributesManager();
+		extSourcesManager = perun.getExtSourcesManager();
 		myVo = new Vo(0, voName, voShortName);
+		myVo1 = new Vo(1, voName + "1", voShortName + "1");
 		ExtSource newExtSource = new ExtSource(extSourceName, ExtSourcesManager.EXTSOURCE_INTERNAL);
-		es = perun.getExtSourcesManager().createExtSource(sess, newExtSource, null);
+		extSource = extSourcesManager.createExtSource(sess, newExtSource, null);
 
 	}
 
@@ -159,6 +179,100 @@ public class VosManagerEntryIntegrationTest extends AbstractPerunIntegrationTest
 		System.out.println(CLASS_NAME + "updateVoWhichNotExists");
 
 		vosManagerEntry.updateVo(sess, new Vo());
+	}
+
+	@Test
+	public void getCompleteCandidates() throws Exception {
+		System.out.println(CLASS_NAME + "getCompleteCandidates");
+
+		setUpUser();
+		setUpUserExtSource();
+		final Vo createdVo = vosManagerEntry.createVo(sess, myVo);
+		final Vo createdVo1 = vosManagerEntry.createVo(sess, myVo1);
+		Member member = membersManager.createMember(sess, createdVo, user);
+//		Member member = membersManager.createMember(sess, createdVo1, user);
+		String memberAttrName = "urn:perun:member:attribute-def:def:mail";
+		String userAttrName = "urn:perun:user:attribute-def:def:preferredMail";
+		Attribute attribute = new Attribute(attributesManager.getAttributeDefinition(sess, memberAttrName));
+		String mail = "test@test.com";
+		attribute.setValue(mail);
+		attributesManager.setAttribute(sess, member, attribute);
+		List<String> attrNames = new ArrayList<>();
+		attrNames.add(userAttrName);
+
+		List<MemberCandidate> memberCandidates = vosManagerEntry.getCompleteCandidates(sess, createdVo, attrNames, mail);
+
+		assertTrue("It should return 1 MemberCandidate.", memberCandidates.size() == 1);
+		assertTrue("Candidate should exist.", memberCandidates.get(0) != null);
+		assertTrue("Candidate should be from Perun", memberCandidates.get(0).getUserExtSource().getExtSource().getName().equals("PERUN"));
+		assertTrue("Candidate should be member of Vo.", memberCandidates.get(0).getMember() != null);
+		assertTrue("There should be 1 attribute.", memberCandidates.get(0).getAttributes().size() == 1);
+		assertTrue("There should be " + userAttrName + " attribute.", memberCandidates.get(0).getAttributes().get(0).getName().equals(userAttrName));
+	}
+
+	@Test
+	public void getCompleteCandidatesFromExtSources() throws Exception {
+		System.out.println(CLASS_NAME + "getCompleteCandidatesFromExtSources");
+
+		setUpUser();
+		setUpUserExtSource();
+		final Vo createdVo = vosManagerEntry.createVo(sess, myVo);
+		extSourcesManager.addExtSource(sess, createdVo, userExtSource.getExtSource());
+		String userAttrName = "urn:perun:user:attribute-def:def:preferredMail";
+		Attribute attribute = new Attribute(attributesManager.getAttributeDefinition(sess, userAttrName));
+		String mail = "test@test.com";
+		attribute.setValue(mail);
+		attributesManager.setAttribute(sess, user, attribute);
+		List<String> attrNames = new ArrayList<>();
+		attrNames.add(userAttrName);
+
+		List<MemberCandidate> memberCandidates = vosManagerEntry.getCompleteCandidates(sess, createdVo, attrNames, mail);
+
+		System.out.println(memberCandidates.get(0).getUserExtSource());
+	}
+
+	@Test
+	public void getCompleteCandidatesWhenCandidateNotExists() throws Exception {
+		System.out.println(CLASS_NAME + "getCompleteCandidatesWhenCandidateNotExists");
+
+		setUpUser();
+		setUpUserExtSource();
+		final Vo createdVo = vosManagerEntry.createVo(sess, myVo);
+		Member member = membersManager.createMember(sess, createdVo, user);
+		Attribute attribute = new Attribute(attributesManager.getAttributeDefinition(sess, "urn:perun:member:attribute-def:def:mail"));
+		String mail = "test@test.com";
+		attribute.setValue(mail);
+		attributesManager.setAttribute(sess, member, attribute);
+
+		List<MemberCandidate> memberCandidates = vosManagerEntry.getCompleteCandidates(sess, createdVo, new ArrayList<String>(), "test." + mail);
+
+		assertTrue("It should not return any MemberCandidate.", memberCandidates.size() == 0);
+	}
+
+	private void setUpUser() throws Exception {
+		user = new User();
+		String userFirstName = "firstName";
+		user.setFirstName(userFirstName);
+		user.setMiddleName("");
+		String userLastName = "lastName";
+		user.setLastName(userLastName);
+		user.setTitleBefore("");
+		user.setTitleAfter("");
+		assertNotNull(perun.getUsersManagerBl().createUser(sess, user));
+		// create new user in database
+		usersForDeletion.add(user);
+		// save user for deletion after testing
+	}
+
+	private void setUpUserExtSource() throws Exception {
+		ExtSource externalSource = perun.getExtSourcesManager().getExtSourceByName(sess, extSourceName);
+		// gets real external source object from database
+		userExtSource.setExtSource(externalSource);
+		// put real external source into user's external source
+		userExtSource.setLogin(extLogin);
+		// set users login in his ext source
+		assertNotNull(usersManager.addUserExtSource(sess, user, userExtSource));
+		// create new user ext source in database
 	}
 
 	@Test
@@ -423,12 +537,12 @@ public class VosManagerEntryIntegrationTest extends AbstractPerunIntegrationTest
 
 	private void addExtSourceDelegate(final Vo createdVo) throws Exception {
 		ExtSourcesManager esme = perun.getExtSourcesManager();
-		esme.addExtSource(sess, createdVo, es);
+		esme.addExtSource(sess, createdVo, extSource);
 	}
 
 	private void removeExtSourceDelegate(Vo createdVo) throws Exception {
 		ExtSourcesManager esme = perun.getExtSourcesManager();
-		esme.removeExtSource(sess, createdVo, es);
+		esme.removeExtSource(sess, createdVo, extSource);
 	}
 
 	@Test
